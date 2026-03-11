@@ -41,5 +41,7 @@ module Libsql
   end
 end
 
-require_relative 'analytics/controller_methods'
-require_relative 'analytics/railtie' if defined?(Rails)
+if defined?(ActiveSupport)
+  require_relative 'analytics/controller_methods'
+  require_relative 'analytics/railtie' if defined?(Rails)
+end
