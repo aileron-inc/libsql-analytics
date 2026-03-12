@@ -11,6 +11,7 @@ RSpec.describe Libsql::Analytics::Configuration do
     it { expect(config.replica_path).to eq('storage/analytics.db') }
     it { expect(config.sync_interval).to eq(60) }
     it { expect(config.account_identity).to be_nil }
+    it { expect(config.skip_paths).to eq(['/assets', '/favicon']) }
   end
 
   describe '#validate!' do

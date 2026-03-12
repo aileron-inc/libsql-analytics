@@ -54,9 +54,12 @@ module Libsql
         }.compact
       end
 
-      # assets / favicon など analytics 不要なリクエストをスキップ
+      # configure の skip_paths に一致するリクエストをスキップ
       def libsql_analytics_skip?
-        request.path.start_with?('/assets', '/favicon')
+        skip_paths = Libsql::Analytics.configuration.skip_paths
+        return false if skip_paths.nil? || skip_paths.empty?
+
+        skip_paths.any? { |pattern| request.path.start_with?(pattern) }
       end
 
       def track_event(name, properties = {})

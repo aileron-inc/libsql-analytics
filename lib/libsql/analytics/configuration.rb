@@ -7,7 +7,8 @@ module Libsql
                     :token,
                     :replica_path,
                     :sync_interval,
-                    :account_identity
+                    :account_identity,
+                    :skip_paths
 
       def initialize
         @url = nil
@@ -15,6 +16,7 @@ module Libsql
         @replica_path = 'storage/analytics.db'
         @sync_interval = 60
         @account_identity = nil
+        @skip_paths = ['/assets', '/favicon']
       end
 
       def validate!
