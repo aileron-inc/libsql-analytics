@@ -30,9 +30,10 @@ module Libsql
       end
 
       def libsql_analytics_visitor_id
+        two_years = 2 * 365 * 24 * 60 * 60
         cookies[Visit::COOKIE_NAME] ||= {
           value: Ulid.generate,
-          expires: 2.years.from_now,
+          expires: Time.now + two_years,
           httponly: true
         }
         cookies[Visit::COOKIE_NAME]
