@@ -1,4 +1,6 @@
 Gemfile.lock
+.env
+tmp/
 /.bundle/
 /.yardoc
 /_yardoc/

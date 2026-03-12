@@ -43,7 +43,7 @@ module Libsql
       end
 
       def connect!
-        require 'turso_libsql'
+        require 'turso_libsql/turso_libsql'
 
         storage_dir = File.dirname(@config.replica_path)
         FileUtils.mkdir_p(storage_dir) unless File.directory?(storage_dir)

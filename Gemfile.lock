@@ -1,11 +1,4 @@
 PATH
-  remote: ../turso
-  specs:
-    activerecord-libsql (0.1.0)
-      activerecord (>= 7.0)
-      rb_sys (~> 0.9)
-
-PATH
   remote: .
   specs:
     libsql-analytics (0.1.0)
@@ -37,6 +30,9 @@ GEM
       activemodel (= 8.1.2)
       activesupport (= 8.1.2)
       timeout (>= 0.4.0)
+    activerecord-libsql (0.1.0)
+      activerecord (>= 7.0)
+      rb_sys (~> 0.9)
     activesupport (8.1.2)
       base64
       bigdecimal
@@ -170,7 +166,6 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  activerecord-libsql!
   irb
   libsql-analytics!
   rake (~> 13.0)
