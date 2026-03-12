@@ -29,13 +29,10 @@ module Libsql
         )
       SQL
 
-      def initialize(db)
-        @db = db
-      end
-
       def migrate!
-        @db.execute(VISITS_DDL)
-        @db.execute(EVENTS_DDL)
+        conn = Record.connection
+        conn.execute(VISITS_DDL)
+        conn.execute(EVENTS_DDL)
       end
     end
   end

@@ -4,16 +4,19 @@ require 'spec_helper'
 
 RSpec.describe Libsql::Analytics do
   after do
-    # 各テスト後に設定をリセット
     described_class.instance_variable_set(:@configuration, nil)
-    described_class.instance_variable_set(:@db, nil)
   end
 
   describe '.configure' do
+    before do
+      # establish_connection! は実 DB 不要なのでスタブ
+      allow(Libsql::Analytics::Record).to receive(:establish_connection)
+    end
+
     it 'yields the configuration object' do
       described_class.configure do |config|
-        config.url = 'libsql://example.turso.io'
-        config.token = 'my-token'
+        config.url           = 'libsql://example.turso.io'
+        config.token         = 'my-token'
         config.sync_interval = 30
       end
 
@@ -22,10 +25,19 @@ RSpec.describe Libsql::Analytics do
       expect(described_class.configuration.sync_interval).to eq(30)
     end
 
-    it 'resets the db connection on reconfigure' do
-      described_class.instance_variable_set(:@db, double('db'))
-      described_class.configure { |c| c.url = 'libsql://example.turso.io' }
-      expect(described_class.instance_variable_get(:@db)).to be_nil
+    it 'calls establish_connection on Record with correct config' do
+      expect(Libsql::Analytics::Record).to receive(:establish_connection).with(
+        hash_including(
+          adapter: 'turso',
+          database: 'libsql://example.turso.io',
+          token: 'my-token'
+        )
+      )
+
+      described_class.configure do |config|
+        config.url   = 'libsql://example.turso.io'
+        config.token = 'my-token'
+      end
     end
   end
 
@@ -35,7 +47,11 @@ RSpec.describe Libsql::Analytics do
     end
 
     context 'when url is set' do
-      before { described_class.configure { |c| c.url = 'libsql://example.turso.io' } }
+      before do
+        allow(Libsql::Analytics::Record).to receive(:establish_connection)
+        described_class.configure { |c| c.url = 'libsql://example.turso.io' }
+      end
+
       it { expect(described_class.configured?).to be true }
     end
   end

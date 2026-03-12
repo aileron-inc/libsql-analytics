@@ -13,148 +13,119 @@ RSpec.describe 'Integration: Libsql::Analytics', :integration do
     skip 'LIBSQL_ANALYTICS_URL not set' unless ENV['LIBSQL_ANALYTICS_URL']
   end
 
-  def cleanup_replica!
-    # replica_path に関連する全ファイルを削除（metadata / shm / wal 含む）
-    Dir.glob("#{replica_path}*").each { |f| FileUtils.rm_f(f) }
-    # 設定・接続をリセット
-    Libsql::Analytics.instance_variable_set(:@configuration, nil)
-    Libsql::Analytics.instance_variable_set(:@db, nil)
-  end
-
   before do
-    cleanup_replica! # 前回テストの残骸を確実に除去
+    cleanup_replica!
 
     Libsql::Analytics.configure do |c|
       c.url           = url
       c.token         = token
       c.replica_path  = replica_path
-      c.sync_interval = 0 # テストでは手動 sync のみ
+      c.sync_interval = 0
     end
 
-    Libsql::Analytics::Migrator.new(Libsql::Analytics.db).migrate!
+    Libsql::Analytics::Migrator.new.migrate!
   end
 
   after do
+    # テストデータを削除してからファイルを消す
+    begin
+      Libsql::Analytics::Event.delete_all
+    rescue StandardError
+      nil
+    end
+    begin
+      Libsql::Analytics::Visit.delete_all
+    rescue StandardError
+      nil
+    end
     cleanup_replica!
+    Libsql::Analytics.instance_variable_set(:@configuration, nil)
+  end
+
+  def cleanup_replica!
+    Dir.glob("#{replica_path}*").each { |f| FileUtils.rm_f(f) }
+  end
+
+  let(:request) do
+    double(
+      url: 'https://example.com/products?utm_source=google',
+      referer: 'https://google.com',
+      remote_ip: '1.2.3.4',
+      user_agent: 'Mozilla/5.0'
+    )
   end
 
   describe 'Visit tracking' do
-    it 'inserts a visit and reads it back' do
-      db = Libsql::Analytics.db
-      visit = Libsql::Analytics::Visit.new(db)
-
-      request = double(
-        url: 'https://example.com/products?utm_source=google',
-        referer: 'https://google.com',
-        remote_ip: '1.2.3.4',
-        user_agent: 'Mozilla/5.0'
-      )
-
-      visit_id = visit.track(
+    it 'inserts a visit and reads it back via AR' do
+      visit = Libsql::Analytics::Visit.track(
         request: request,
         visitor_id: Libsql::Analytics::Ulid.generate,
         account_identity: 'user-abc',
         metadata: { ip: '1.2.3.4', user_agent: 'Mozilla/5.0' }
       )
 
-      rows = db.query("SELECT * FROM libsql_analytics_visits WHERE id = '#{visit_id}'")
-
-      expect(rows.length).to eq(1)
-      row = rows.first
-      expect(row['id']).to eq(visit_id)
-      expect(row['account_identity']).to eq('user-abc')
-      expect(row['host']).to eq('example.com')
-      expect(row['path']).to eq('/products')
-      expect(row['query']).to eq('utm_source=google')
-      expect(row['query_params']).to include('utm_source')
-      expect(row['referrer']).to eq('https://google.com')
-      expect(row['metadata']).to include('1.2.3.4')
+      found = Libsql::Analytics::Visit.find(visit.id)
+      expect(found.account_identity).to eq('user-abc')
+      expect(found.host).to eq('example.com')
+      expect(found.path).to eq('/products')
+      expect(found.query).to eq('utm_source=google')
+      expect(found.query_params).to include('utm_source')
+      expect(found.referrer).to eq('https://google.com')
+      expect(found.metadata).to include('1.2.3.4')
     end
 
-    it 'stores NULL for account_identity when not logged in' do
-      db = Libsql::Analytics.db
-      visit = Libsql::Analytics::Visit.new(db)
-
-      request = double(
-        url: 'https://example.com/',
-        referer: nil,
-        remote_ip: '9.9.9.9',
-        user_agent: 'curl/7.0'
-      )
-
-      visit_id = visit.track(
+    it 'stores nil for account_identity when not logged in' do
+      visit = Libsql::Analytics::Visit.track(
         request: request,
         visitor_id: Libsql::Analytics::Ulid.generate
       )
 
-      rows = db.query("SELECT * FROM libsql_analytics_visits WHERE id = '#{visit_id}'")
-      expect(rows.first['account_identity']).to be_nil
+      found = Libsql::Analytics::Visit.find(visit.id)
+      expect(found.account_identity).to be_nil
     end
   end
 
   describe 'Event tracking' do
-    it 'inserts an event and reads it back' do
-      db = Libsql::Analytics.db
-      visit = Libsql::Analytics::Visit.new(db)
-      event = Libsql::Analytics::Event.new(db)
-
-      request = double(
-        url: 'https://example.com/signup',
-        referer: nil,
-        remote_ip: '1.2.3.4',
-        user_agent: 'Mozilla/5.0'
-      )
-
-      visit_id = visit.track(
+    it 'inserts an event and reads it back via AR' do
+      visit = Libsql::Analytics::Visit.track(
         request: request,
         visitor_id: Libsql::Analytics::Ulid.generate
       )
 
-      event_id = event.track(
+      event = Libsql::Analytics::Event.track(
         name: 'Clicked Signup',
-        visit_id: visit_id,
-        properties: { plan: 'pro', source: 'banner' }
+        visit_id: visit.id,
+        properties: { plan: 'pro' }
       )
 
-      rows = db.query("SELECT * FROM libsql_analytics_events WHERE id = '#{event_id}'")
-
-      expect(rows.length).to eq(1)
-      row = rows.first
-      expect(row['id']).to eq(event_id)
-      expect(row['visit_id']).to eq(visit_id)
-      expect(row['name']).to eq('Clicked Signup')
-      expect(row['properties']).to include('pro')
-      expect(row['event_at']).to match(/\d{4}-\d{2}-\d{2}T/)
+      found = Libsql::Analytics::Event.find(event.id)
+      expect(found.visit_id).to eq(visit.id)
+      expect(found.name).to eq('Clicked Signup')
+      expect(found.properties).to include('pro')
+      expect(found.event_at).to match(/\d{4}-\d{2}-\d{2}T/)
     end
 
     it 'tracks an event without a visit' do
-      db = Libsql::Analytics.db
-      event = Libsql::Analytics::Event.new(db)
+      event = Libsql::Analytics::Event.track(name: 'Background Job Completed')
 
-      event_id = event.track(name: 'Background Job Completed')
-
-      rows = db.query("SELECT * FROM libsql_analytics_events WHERE id = '#{event_id}'")
-      expect(rows.first['visit_id']).to be_nil
+      found = Libsql::Analytics::Event.find(event.id)
+      expect(found.visit_id).to be_nil
     end
   end
 
   describe 'Migrator' do
     it 'creates tables idempotently' do
-      migrator = Libsql::Analytics::Migrator.new(Libsql::Analytics.db)
+      migrator = Libsql::Analytics::Migrator.new
       expect { migrator.migrate! }.not_to raise_error
       expect { migrator.migrate! }.not_to raise_error
     end
 
     it 'creates libsql_analytics_visits table' do
-      db = Libsql::Analytics.db
-      rows = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='libsql_analytics_visits'")
-      expect(rows).not_to be_empty
+      expect(Libsql::Analytics::Record.connection.table_exists?('libsql_analytics_visits')).to be true
     end
 
     it 'creates libsql_analytics_events table' do
-      db = Libsql::Analytics.db
-      rows = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='libsql_analytics_events'")
-      expect(rows).not_to be_empty
+      expect(Libsql::Analytics::Record.connection.table_exists?('libsql_analytics_events')).to be true
     end
   end
 end

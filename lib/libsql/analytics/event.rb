@@ -4,30 +4,25 @@ require 'json'
 
 module Libsql
   module Analytics
-    class Event
-      def initialize(db)
-        @db = db
+    class Event < Record
+      self.table_name = 'libsql_analytics_events'
+
+      before_create :assign_ulid
+
+      # イベントを記録する
+      def self.track(name:, visit_id: nil, properties: {})
+        create!(
+          visit_id: visit_id,
+          name: name,
+          properties: properties.empty? ? nil : properties.to_json,
+          event_at: Time.now.utc.iso8601
+        )
       end
 
-      def track(name:, visit_id: nil, properties: {})
-        id = Ulid.generate
+      private
 
-        @db.execute(
-          <<~SQL,
-            INSERT INTO libsql_analytics_events
-              (id, visit_id, name, properties, event_at)
-            VALUES (?, ?, ?, ?, ?)
-          SQL
-          [
-            id,
-            visit_id,
-            name,
-            properties.empty? ? nil : JSON.generate(properties),
-            Time.now.utc.iso8601
-          ]
-        )
-
-        id
+      def assign_ulid
+        self.id ||= Ulid.generate
       end
     end
   end

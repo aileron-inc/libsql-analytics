@@ -5,56 +5,48 @@ require 'uri'
 
 module Libsql
   module Analytics
-    class Visit
+    class Visit < Record
+      self.table_name = 'libsql_analytics_visits'
+
       COOKIE_NAME = 'libsql_analytics_visitor'
 
-      attr_reader :id
+      before_create :assign_ulid
 
-      def initialize(db)
-        @db = db
-        @id = Ulid.generate
-      end
-
-      def track(request:, visitor_id:, account_identity: nil, metadata: {})
+      # request オブジェクトから visit を記録する
+      def self.track(request:, visitor_id:, account_identity: nil, metadata: {})
         uri = parse_uri(request.url)
+        query = uri&.query
 
-        @db.execute(
-          <<~SQL,
-            INSERT INTO libsql_analytics_visits
-              (id, visitor_id, account_identity, referrer, host, url, path, query, query_params, metadata, started_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          SQL
-          [
-            @id,
-            visitor_id,
-            account_identity,
-            request.referer,
-            uri&.host,
-            request.url,
-            uri&.path,
-            uri&.query,
-            parse_query_params(uri&.query),
-            metadata.empty? ? nil : JSON.generate(metadata),
-            Time.now.utc.iso8601
-          ]
+        create!(
+          visitor_id: visitor_id,
+          account_identity: account_identity,
+          referrer: request.referer,
+          host: uri&.host,
+          url: request.url,
+          path: uri&.path,
+          query: query,
+          query_params: parse_query_params(query),
+          metadata: metadata.empty? ? nil : metadata.to_json,
+          started_at: Time.now.utc.iso8601
         )
-
-        @id
       end
 
       private
 
-      def parse_uri(url)
+      def assign_ulid
+        self.id ||= Ulid.generate
+      end
+
+      def self.parse_uri(url)
         URI.parse(url)
       rescue URI::InvalidURIError
         nil
       end
 
-      def parse_query_params(query)
+      def self.parse_query_params(query)
         return nil if query.nil? || query.empty?
 
-        params = URI.decode_www_form(query).to_h
-        JSON.generate(params)
+        URI.decode_www_form(query).to_h.to_json
       rescue StandardError
         nil
       end
